@@ -1,1 +1,2 @@
 一个ai工具生成的audiobookshelf的ios客户端,功能简略,增加了跳过片头片尾
+ipa产物需要自签名后安装
