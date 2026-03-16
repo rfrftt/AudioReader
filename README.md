@@ -1,6 +1,6 @@
 # 🎧 AudioBookshelf iOS 客户端
 
-> 一个由 AI 生成的 Audiobookshelf iOS 客户端，具备增强功能
+> 一个由 AI 生成的 Audiobookshelf iOS 客户端，具备增强功能 ipa产物需要自签名后安装
 
 [![Platform](https://img.shields.io/badge/platform-iOS-blue)]()
 [![Swift](https://img.shields.io/badge/language-Swift-orange)]()
