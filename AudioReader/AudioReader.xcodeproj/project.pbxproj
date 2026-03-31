@@ -9,6 +9,12 @@
 /* Begin PBXBuildFile section */
 		9B4A2A132F1DDAAB00D6A6BC /* AudioReaderApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2A122F1DDAAB00D6A6BC /* AudioReaderApp.swift */; };
 		9B4A2A152F1DDAAB00D6A6BC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2A142F1DDAAB00D6A6BC /* ContentView.swift */; };
+		9B4A2B012F30000100D6A6BC /* AppCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2B002F30000100D6A6BC /* AppCore.swift */; };
+		9B4A2B032F30000100D6A6BC /* NetworkingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2B022F30000100D6A6BC /* NetworkingModels.swift */; };
+		9B4A2B052F30000100D6A6BC /* AudioPlayerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2B042F30000100D6A6BC /* AudioPlayerManager.swift */; };
+		9B4A2B072F30000100D6A6BC /* AuthAndShellViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2B062F30000100D6A6BC /* AuthAndShellViews.swift */; };
+		9B4A2B092F30000100D6A6BC /* LibraryViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2B082F30000100D6A6BC /* LibraryViews.swift */; };
+		9B4A2B0B2F30000100D6A6BC /* PlayerAndChapterViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9B4A2B0A2F30000100D6A6BC /* PlayerAndChapterViews.swift */; };
 		9B4A2A172F1DDAAC00D6A6BC /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B4A2A162F1DDAAC00D6A6BC /* Assets.xcassets */; };
 		9B4A2A1A2F1DDAAC00D6A6BC /* Preview Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 9B4A2A192F1DDAAC00D6A6BC /* Preview Assets.xcassets */; };
 		9B4A2A9A2F1EAAAA00D6A6BC /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 9B4A2A9B2F1EAAAA00D6A6BC /* LaunchScreen.storyboard */; };
@@ -38,6 +44,12 @@
 		9B4A2A0F2F1DDAAB00D6A6BC /* AudioReader.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AudioReader.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		9B4A2A122F1DDAAB00D6A6BC /* AudioReaderApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioReaderApp.swift; sourceTree = "<group>"; };
 		9B4A2A142F1DDAAB00D6A6BC /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		9B4A2B002F30000100D6A6BC /* AppCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCore.swift; sourceTree = "<group>"; };
+		9B4A2B022F30000100D6A6BC /* NetworkingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkingModels.swift; sourceTree = "<group>"; };
+		9B4A2B042F30000100D6A6BC /* AudioPlayerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioPlayerManager.swift; sourceTree = "<group>"; };
+		9B4A2B062F30000100D6A6BC /* AuthAndShellViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthAndShellViews.swift; sourceTree = "<group>"; };
+		9B4A2B082F30000100D6A6BC /* LibraryViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryViews.swift; sourceTree = "<group>"; };
+		9B4A2B0A2F30000100D6A6BC /* PlayerAndChapterViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerAndChapterViews.swift; sourceTree = "<group>"; };
 		9B4A2A162F1DDAAC00D6A6BC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		9B4A2A192F1DDAAC00D6A6BC /* Preview Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = "Preview Assets.xcassets"; sourceTree = "<group>"; };
 		9B4A2A9B2F1EAAAA00D6A6BC /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
@@ -97,6 +109,12 @@
 			isa = PBXGroup;
 			children = (
 				9B4A2A122F1DDAAB00D6A6BC /* AudioReaderApp.swift */,
+				9B4A2B002F30000100D6A6BC /* AppCore.swift */,
+				9B4A2B022F30000100D6A6BC /* NetworkingModels.swift */,
+				9B4A2B042F30000100D6A6BC /* AudioPlayerManager.swift */,
+				9B4A2B062F30000100D6A6BC /* AuthAndShellViews.swift */,
+				9B4A2B082F30000100D6A6BC /* LibraryViews.swift */,
+				9B4A2B0A2F30000100D6A6BC /* PlayerAndChapterViews.swift */,
 				9B4A2A142F1DDAAB00D6A6BC /* ContentView.swift */,
 				9B4A2A9B2F1EAAAA00D6A6BC /* LaunchScreen.storyboard */,
 				9B4A2A162F1DDAAC00D6A6BC /* Assets.xcassets */,
@@ -261,6 +279,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				9B4A2B0B2F30000100D6A6BC /* PlayerAndChapterViews.swift in Sources */,
+				9B4A2B092F30000100D6A6BC /* LibraryViews.swift in Sources */,
+				9B4A2B072F30000100D6A6BC /* AuthAndShellViews.swift in Sources */,
+				9B4A2B052F30000100D6A6BC /* AudioPlayerManager.swift in Sources */,
+				9B4A2B032F30000100D6A6BC /* NetworkingModels.swift in Sources */,
+				9B4A2B012F30000100D6A6BC /* AppCore.swift in Sources */,
 				9B4A2A152F1DDAAB00D6A6BC /* ContentView.swift in Sources */,
 				9B4A2A132F1DDAAB00D6A6BC /* AudioReaderApp.swift in Sources */,
 			);
