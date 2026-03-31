@@ -2,6 +2,7 @@
 //  ContentView.swift
 //  AudioReader
 //
+//  Created by zwq on 2026/1/19.
 //
 
 import SwiftUI
@@ -108,6 +109,10 @@ final class AppStore {
         defer { isBootstrapping = false }
 
         guard let savedSession = loadSessionFromKeychain() else {
+            return
+        }
+        if shouldInvalidateSessionForSelectedServer(savedSession) {
+            deleteSessionFromKeychain()
             return
         }
         session = savedSession
@@ -262,6 +267,21 @@ final class AppStore {
         selectedItemDetail = nil
         apiClient = nil
         deleteSessionFromKeychain()
+    }
+
+    @MainActor
+    func switchServerProfileAndSignOutIfNeeded(id: String) async {
+        guard let profile = serverProfiles.first(where: { $0.id == id }) else { return }
+        let previousBaseURL = session?.baseURLString
+        selectedServerProfileId = id
+        saveServerProfiles()
+        applyServerProfile(profile)
+
+        guard let currentSessionBaseURL = previousBaseURL else { return }
+        let nextBaseURL = buildBaseURL().map(normalizedBaseURLString)
+        if nextBaseURL != currentSessionBaseURL {
+            await signOut()
+        }
     }
 
     @MainActor
@@ -619,6 +639,11 @@ final class AppStore {
         }
     }
 
+    private func shouldInvalidateSessionForSelectedServer(_ session: Session) -> Bool {
+        guard let configured = buildBaseURL().map(normalizedBaseURLString) else { return false }
+        return configured != session.baseURLString
+    }
+
     private func loadThemePreference() -> ThemePreference {
         let raw = UserDefaults.standard.string(forKey: "theme_preference") ?? ThemePreference.system.rawValue
         return ThemePreference(rawValue: raw) ?? .system
@@ -666,9 +691,22 @@ struct KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: account
         ]
-        SecItemDelete(query as CFDictionary)
-        let attributes: [String: Any] = query.merging([kSecValueData as String: data]) { $1 }
-        SecItemAdd(attributes as CFDictionary, nil)
+        let updateStatus = SecItemUpdate(
+            query as CFDictionary,
+            [kSecValueData as String: data] as CFDictionary
+        )
+        if updateStatus == errSecSuccess {
+            return
+        }
+
+        let attributes: [String: Any] = query.merging([
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+        ]) { $1 }
+        let addStatus = SecItemAdd(attributes as CFDictionary, nil)
+        if addStatus == errSecDuplicateItem {
+            _ = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        }
     }
 
     func getString(account: String) -> String? {
@@ -2122,8 +2160,7 @@ struct ServerManagerView: View {
                 List {
                     ForEach(store.serverProfiles) { profile in
                         Button {
-                            store.selectServerProfile(id: profile.id)
-                            Task { await store.signOut() }
+                            Task { await store.switchServerProfileAndSignOutIfNeeded(id: profile.id) }
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 4) {
@@ -2604,48 +2641,56 @@ struct ItemChapterListView: View {
     @State private var chapters: [Chapter] = []
     @State private var startTimeHint: Double = 0
     @State private var isHandlingTap = false
+    @State private var didInitialScroll = false
 
     var body: some View {
         ScrollViewReader { proxy in
             let currentId = (store.player.libraryItemId == itemId) ? store.player.currentChapterId : nil
-            List {
+            Group {
                 if isLoading {
-                    HStack {
-                        Spacer()
+                    VStack {
+                        Spacer(minLength: 24)
                         ProgressView()
                         Spacer()
                     }
                 } else if let errorText {
-                    Text(errorText).foregroundStyle(.red)
+                    VStack {
+                        Spacer(minLength: 24)
+                        Text(errorText).foregroundStyle(.red)
+                        Spacer()
+                    }
                 } else {
-                    ForEach(chapters) { chapter in
-                        Button {
-                            handleTap(chapter: chapter)
-                        } label: {
-                            HStack {
-                                if currentId == chapter.id, store.player.isPlaying {
-                                    Image(systemName: "speaker.wave.2.fill")
-                                        .foregroundStyle(.tint)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(chapters) { chapter in
+                                let isCurrent = currentId == chapter.id
+                                Button {
+                                    handleTap(chapter: chapter)
+                                } label: {
+                                    ChapterListRowView(
+                                        chapter: chapter,
+                                        isCurrent: isCurrent,
+                                        showPlayingIndicator: isCurrent && store.player.isPlaying,
+                                        style: .grouped
+                                    )
                                 }
-                                Text(chapter.title).lineLimit(1)
-                                    .fontWeight(currentId == chapter.id ? .semibold : .regular)
-                                Spacer()
-                                Text(TimeFormatter.timeString(chapter.start)).font(.caption).foregroundStyle(.secondary)
+                                .disabled(isHandlingTap)
+                                .buttonStyle(.plain)
+                                .id(chapter.id)
                             }
                         }
-                        .disabled(isHandlingTap)
-                        .buttonStyle(.plain)
-                        .listRowInsets(EdgeInsets(top: 10, leading: 16, bottom: 10, trailing: 16))
-                        .id(chapter.id)
                     }
+                    .scrollIndicators(.hidden)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("章节")
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
             .background(Color(uiColor: .systemGroupedBackground))
             .task(id: itemId) {
                 await load(proxy: proxy)
+            }
+            .onChange(of: chapters.count) { _, _ in
+                scrollToInitialChapterIfNeeded(proxy: proxy)
             }
         }
     }
@@ -2666,11 +2711,7 @@ struct ItemChapterListView: View {
             isLoading = true
         }
 
-        if isLoading == false, let targetId = nearestChapterId(currentTime: startTimeHint, chapters: chapters) {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                proxy.scrollTo(targetId, anchor: .center)
-            }
-        }
+        scrollToInitialChapterIfNeeded(proxy: proxy)
 
         guard !isUpdating else { return }
         isUpdating = true
@@ -2694,6 +2735,22 @@ struct ItemChapterListView: View {
                         isLoading = false
                     }
                 }
+            }
+        }
+    }
+
+    private func scrollToInitialChapterIfNeeded(proxy: ScrollViewProxy) {
+        guard !didInitialScroll else { return }
+        guard !isLoading else { return }
+        guard let targetId = nearestChapterId(currentTime: startTimeHint, chapters: chapters) else { return }
+        didInitialScroll = true
+        scrollTo(proxy: proxy, id: targetId)
+    }
+
+    private func scrollTo(proxy: ScrollViewProxy, id: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) {
+            withAnimation(.easeOut(duration: 0.18)) {
+                proxy.scrollTo(id, anchor: .center)
             }
         }
     }
@@ -2749,6 +2806,90 @@ struct ItemChapterListView: View {
         let bm = b[mid]
         if am.id != bm.id || am.start != bm.start || am.title != bm.title { return true }
         return false
+    }
+}
+
+private enum ChapterListRowStyle: Equatable {
+    case grouped
+    case plain
+    case card
+}
+
+private struct ChapterListRowView: View, Equatable {
+    let chapter: Chapter
+    let isCurrent: Bool
+    let showPlayingIndicator: Bool
+    let style: ChapterListRowStyle
+
+    static func == (lhs: ChapterListRowView, rhs: ChapterListRowView) -> Bool {
+        lhs.chapter == rhs.chapter &&
+            lhs.isCurrent == rhs.isCurrent &&
+            lhs.showPlayingIndicator == rhs.showPlayingIndicator &&
+            lhs.style == rhs.style
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if showPlayingIndicator {
+                Image(systemName: "speaker.wave.2.fill")
+                    .foregroundStyle(.tint)
+            } else {
+                Image(systemName: "circle.fill")
+                    .foregroundStyle(.clear)
+            }
+            Text(chapter.title)
+                .lineLimit(1)
+                .fontWeight(isCurrent ? .semibold : .regular)
+            Spacer()
+            Text(TimeFormatter.timeString(chapter.start))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, verticalPadding)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(backgroundColor)
+        .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .overlay(alignment: .bottom) {
+            if style == .plain {
+                Divider()
+                    .padding(.leading, 16)
+            }
+        }
+        .padding(.vertical, outerVerticalPadding)
+        .padding(.horizontal, outerHorizontalPadding)
+    }
+
+    private var backgroundColor: Color {
+        switch style {
+        case .grouped:
+            return isCurrent ? Color.secondary.opacity(0.12) : Color(uiColor: .secondarySystemBackground)
+        case .plain:
+            return isCurrent ? Color.secondary.opacity(0.12) : Color.clear
+        case .card:
+            return isCurrent ? Color.secondary.opacity(0.12) : Color(uiColor: .secondarySystemBackground)
+        }
+    }
+
+    private var cornerRadius: CGFloat {
+        switch style {
+        case .grouped, .card:
+            return 12
+        case .plain:
+            return 0
+        }
+    }
+
+    private var verticalPadding: CGFloat {
+        style == .plain ? 12 : 10
+    }
+
+    private var outerVerticalPadding: CGFloat {
+        style == .card ? 4 : 0
+    }
+
+    private var outerHorizontalPadding: CGFloat {
+        style == .grouped ? 12 : 0
     }
 }
 
@@ -3183,31 +3324,15 @@ struct PlayerChapterSheetView: View {
                                 store.player.jumpToChapter(chapter)
                                 dismiss()
                             } label: {
-                                HStack(spacing: 10) {
-                                    if isCurrent, store.player.isPlaying {
-                                        Image(systemName: "speaker.wave.2.fill")
-                                            .foregroundStyle(.tint)
-                                    } else {
-                                        Image(systemName: "circle.fill")
-                                            .foregroundStyle(.clear)
-                                    }
-                                    Text(chapter.title)
-                                        .lineLimit(1)
-                                        .fontWeight(isCurrent ? .semibold : .regular)
-                                    Spacer()
-                                    Text(TimeFormatter.timeString(chapter.start))
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                }
-                                .padding(.vertical, 12)
-                                .padding(.horizontal, 16)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(isCurrent ? Color.secondary.opacity(0.12) : Color.clear)
+                                ChapterListRowView(
+                                    chapter: chapter,
+                                    isCurrent: isCurrent,
+                                    showPlayingIndicator: isCurrent && store.player.isPlaying,
+                                    style: .plain
+                                )
                             }
                             .buttonStyle(.plain)
                             .id(chapter.id)
-                            Divider()
-                                .padding(.leading, 16)
                         }
                     }
                 }
@@ -3244,32 +3369,17 @@ struct ChapterListView: View {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     ForEach(store.player.chapters) { chapter in
+                        let isCurrent = currentId == chapter.id
                         Button {
                             store.player.jumpToChapter(chapter)
                             dismiss()
                         } label: {
-                            HStack(spacing: 10) {
-                                if currentId == chapter.id, store.player.isPlaying {
-                                    Image(systemName: "speaker.wave.2.fill")
-                                        .foregroundStyle(.tint)
-                                } else {
-                                    Image(systemName: "circle.fill")
-                                        .foregroundStyle(.clear)
-                                }
-                                Text(chapter.title)
-                                    .lineLimit(1)
-                                    .fontWeight(currentId == chapter.id ? .semibold : .regular)
-                                Spacer()
-                                Text(TimeFormatter.timeString(chapter.start))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.vertical, 10)
-                            .padding(.horizontal, 16)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .background(currentId == chapter.id ? Color.secondary.opacity(0.12) : Color(uiColor: .secondarySystemBackground))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .padding(.vertical, 4)
+                            ChapterListRowView(
+                                chapter: chapter,
+                                isCurrent: isCurrent,
+                                showPlayingIndicator: isCurrent && store.player.isPlaying,
+                                style: .card
+                            )
                         }
                         .buttonStyle(.plain)
                         .id(chapter.id)
