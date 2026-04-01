@@ -111,6 +111,13 @@
   - 监听 `timeControlStatus` 更新 UI 播放状态。
   - **后台播放**: 配置 `AVAudioSession` category 为 `.playback`。
   - **锁屏控制**: 使用 `MPNowPlayingInfoCenter` 更新元数据，`MPRemoteCommandCenter` 响应外部控制。
+  - **下一章预加载**:
+    - 触发时机：播放中且当前章节剩余时间 <= 阈值秒数时，尝试预加载下一章节资源（默认 45 秒）。
+    - 目标识别：按下一章节的 `start` 时间映射到对应音轨（track index）。
+    - 预热方式：后台创建 `AVURLAsset`，异步加载 `isPlayable`/`duration`，提前完成资源探测与连接预热。
+    - 去重规则：同一“下一章节 + 音轨”只预加载一次，避免重复开销。
+    - 生命周期：开始新会话或停止播放时，清理预加载状态并取消未完成任务。
+    - 用户配置：在“我的 > 播放”与“跳过片头片尾”同区域提供“下一章预加载阈值（秒）”配置，支持 0-600 秒；0 表示关闭预加载。
 
 ### 3.2 离线下载 (Download Service)
 - **框架**: `URLSession` (Background Configuration)

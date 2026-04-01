@@ -250,6 +250,18 @@ struct ProfileView: View {
                         }
                     }
                     .disabled(!store.player.skipEnabled)
+
+                    Stepper(value: Binding(
+                        get: { Int(store.player.nextChapterPreloadLeadSeconds) },
+                        set: { store.player.setNextChapterPreloadLeadSeconds(Double($0)) }
+                    ), in: 0...600, step: 1) {
+                        HStack {
+                            Text("下一章预加载阈值")
+                            Spacer()
+                            Text("\(Int(store.player.nextChapterPreloadLeadSeconds))s")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
                 Section("外观") {
                     Picker("主题", selection: $store.themePreference) {

@@ -12,6 +12,7 @@ final class AudioPlayerManager {
         static let skipEnabled = "player_skip_enabled_v1"
         static let skipIntroSeconds = "player_skip_intro_seconds_v1"
         static let skipOutroSeconds = "player_skip_outro_seconds_v1"
+        static let nextChapterPreloadLeadSeconds = "player_next_chapter_preload_lead_seconds_v1"
         static let customSleepMinutes = "player_custom_sleep_minutes_v1"
     }
 
@@ -27,6 +28,7 @@ final class AudioPlayerManager {
     var skipEnabled = false
     var skipIntroSeconds: Double = 0
     var skipOutroSeconds: Double = 0
+    var nextChapterPreloadLeadSeconds: Double = 45
     var chapters: [Chapter] = []
     var currentChapterId: Int?
     var currentChapterIndex: Int?
@@ -73,6 +75,9 @@ final class AudioPlayerManager {
     private var playbackBaseURL: URL?
     private var accessToken: String?
     private var isRebuildingForToken = false
+    private var preloadedNextChapterId: Int?
+    private var preloadedNextTrackIndex: Int?
+    private var nextChapterPreloadTask: Task<Void, Never>?
 
     private init() {
         loadPreferences()
@@ -211,6 +216,10 @@ final class AudioPlayerManager {
 
     func stop() {
         isPlayRequested = false
+        nextChapterPreloadTask?.cancel()
+        nextChapterPreloadTask = nil
+        preloadedNextChapterId = nil
+        preloadedNextTrackIndex = nil
         sleepTimer?.invalidate()
         sleepTimer = nil
         sleepTimerTargetDate = nil
@@ -335,6 +344,15 @@ final class AudioPlayerManager {
     func setSkipOutroSeconds(_ seconds: Double) {
         skipOutroSeconds = max(0, seconds)
         lastAutoOutroChapterId = nil
+        savePreferences()
+    }
+
+    func setNextChapterPreloadLeadSeconds(_ seconds: Double) {
+        nextChapterPreloadLeadSeconds = max(0, min(seconds, 600))
+        nextChapterPreloadTask?.cancel()
+        nextChapterPreloadTask = nil
+        preloadedNextChapterId = nil
+        preloadedNextTrackIndex = nil
         savePreferences()
     }
 
@@ -614,6 +632,10 @@ final class AudioPlayerManager {
     }
 
     private func buildPlayer(startAtGlobalTime: Double) {
+        nextChapterPreloadTask?.cancel()
+        nextChapterPreloadTask = nil
+        preloadedNextChapterId = nil
+        preloadedNextTrackIndex = nil
         NotificationCenter.default.removeObserver(self, name: .AVPlayerItemDidPlayToEndTime, object: nil)
         if let timeObserver {
             player?.removeTimeObserver(timeObserver)
@@ -706,6 +728,7 @@ final class AudioPlayerManager {
             updateNowPlaying()
             updateCurrentChapterContext()
             applyAutoSkipIfNeeded()
+            maybePreloadNextChapterIfNeeded()
         }
     }
 
@@ -750,6 +773,47 @@ final class AudioPlayerManager {
         }
     }
 
+    private func maybePreloadNextChapterIfNeeded() {
+        guard nextChapterPreloadLeadSeconds > 0 else { return }
+        guard isPlayRequested, !isBuffering else { return }
+        guard !isScrubbing, !isSeeking else { return }
+        guard let currentIndex = currentChapterIndex else { return }
+        let nextIndex = currentIndex + 1
+        guard nextIndex < chapters.count else { return }
+        guard currentChapterDuration > 0 else { return }
+        let remaining = max(0, currentChapterDuration - currentChapterElapsed)
+        guard remaining <= nextChapterPreloadLeadSeconds else { return }
+
+        let nextChapter = chapters[nextIndex]
+        let nextTrackIndex = trackIndex(forGlobalTime: nextChapter.start)
+        guard nextTrackIndex >= 0, nextTrackIndex < tracks.count else { return }
+
+        if preloadedNextChapterId == nextChapter.id, preloadedNextTrackIndex == nextTrackIndex {
+            return
+        }
+
+        let currentTrackIndex = currentPlayingTrackIndex() ?? trackIndex(forGlobalTime: currentTime)
+        guard nextTrackIndex != currentTrackIndex || tracks.count == 1 else { return }
+        guard let url = resolvedURL(for: tracks[nextTrackIndex]), !url.isFileURL else { return }
+
+        nextChapterPreloadTask?.cancel()
+        nextChapterPreloadTask = Task(priority: .utility) { [weak self] in
+            guard let self else { return }
+            let asset = AVURLAsset(url: url)
+            do {
+                _ = try await asset.load(.isPlayable)
+                _ = try? await asset.load(.duration)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self.preloadedNextChapterId = nextChapter.id
+                self.preloadedNextTrackIndex = nextTrackIndex
+            }
+        }
+    }
+
     private func loadPreferences() {
         let defaults = UserDefaults.standard
         if defaults.object(forKey: DefaultsKeys.rate) != nil {
@@ -762,6 +826,11 @@ final class AudioPlayerManager {
         let outro = defaults.double(forKey: DefaultsKeys.skipOutroSeconds)
         skipIntroSeconds = max(0, intro)
         skipOutroSeconds = max(0, outro)
+        if defaults.object(forKey: DefaultsKeys.nextChapterPreloadLeadSeconds) != nil {
+            nextChapterPreloadLeadSeconds = max(0, min(defaults.double(forKey: DefaultsKeys.nextChapterPreloadLeadSeconds), 600))
+        } else {
+            nextChapterPreloadLeadSeconds = 45
+        }
         if defaults.object(forKey: DefaultsKeys.customSleepMinutes) != nil {
             customSleepMinutes = max(1, min(defaults.integer(forKey: DefaultsKeys.customSleepMinutes), 720))
         } else {
@@ -775,6 +844,7 @@ final class AudioPlayerManager {
         defaults.set(skipEnabled, forKey: DefaultsKeys.skipEnabled)
         defaults.set(skipIntroSeconds, forKey: DefaultsKeys.skipIntroSeconds)
         defaults.set(skipOutroSeconds, forKey: DefaultsKeys.skipOutroSeconds)
+        defaults.set(nextChapterPreloadLeadSeconds, forKey: DefaultsKeys.nextChapterPreloadLeadSeconds)
         defaults.set(customSleepMinutes, forKey: DefaultsKeys.customSleepMinutes)
     }
 
@@ -846,6 +916,14 @@ final class AudioPlayerManager {
             }
         }
         return max(0, tracks.count - 1)
+    }
+
+    private func currentPlayingTrackIndex() -> Int? {
+        guard let item = player?.currentItem else { return nil }
+        guard let localIndex = playerItems.firstIndex(where: { $0 === item }) else { return nil }
+        let global = playlistStartIndex + localIndex
+        guard global >= 0, global < tracks.count else { return nil }
+        return global
     }
 
     private func jumpToGlobalTime(_ time: Double, autoplay: Bool, commandToken: UUID, completion: (() -> Void)?) {
