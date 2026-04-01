@@ -13,6 +13,7 @@ DerivedData/
 
 # Local configuration files
 ExportOptions.plist
+/AudioReader/ExportOptions.plist
 # Default ignored files
 /shelf/
 /workspace.xml
